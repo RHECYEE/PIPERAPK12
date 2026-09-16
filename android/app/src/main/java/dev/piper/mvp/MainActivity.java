@@ -98,6 +98,12 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
     }
 
     private void loadSelectedVoice() {
+        // A voice change invalidates anything still being synthesized: loading a new
+        // voice can replace the PlaybackEngine, and the run in flight holds a reference
+        // to the old one. Without this, its completion would mark the new engine's
+        // stream finished.
+        engine.cancelSynthesis();
+        synthesisRunning = false;
         VoiceRepository.Voice voice = voices.findById(settings.voiceId());
         if (voice == null) {
             java.util.List<VoiceRepository.Voice> all = voices.list();
