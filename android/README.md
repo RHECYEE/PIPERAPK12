@@ -76,6 +76,19 @@ Settings persist in `SharedPreferences`. On first run they are seeded from the l
 model's own `inference` values, so the app starts out behaving exactly like the upstream
 CLI for that voice. **Reset to Defaults** restores the current model's declared values.
 
+## Known limits
+
+* **Cancellation is sentence-granular.** piper's audio callback only fires at sentence
+  boundaries, so starting a new Play while a sentence is still being inferred takes
+  effect when that sentence finishes. The run token makes the superseded run's remaining
+  output a no-op, so it can never leak into the new playback - it just is not instant.
+* **Everything is held in memory.** The PCM cache grows with the text: roughly 2 bytes
+  per sample, so about 2.6 MB per minute of audio at 22.05 kHz. Fine for the MVP's
+  paste-a-page use case, not for a whole book.
+* **Synthesis is stochastic.** At the default `noise_w`, re-synthesizing the same text
+  gives slightly different audio and a slightly different duration. Set `noise_w` to 0
+  for reproducible output.
+
 ## Building
 
 ```bash
