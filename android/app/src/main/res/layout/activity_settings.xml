@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView style="@style/SettingLabel" android:text="@string/voice" />
+
+        <Spinner
+            android:id="@+id/voiceSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <Button
+            android:id="@+id/importVoiceButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/import_voice" />
+
+        <TextView style="@style/SettingLabel" android:text="@string/speaker" />
+
+        <Spinner
+            android:id="@+id/speakerSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:id="@+id/speakerHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/single_speaker"
+            android:textSize="12sp"
+            android:paddingBottom="8dp" />
+
+        <TextView android:id="@+id/lengthScaleLabel" style="@style/SettingLabel" />
+        <SeekBar android:id="@+id/lengthScaleBar" style="@style/SettingSlider" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/length_scale_help"
+            android:textSize="12sp" />
+
+        <TextView android:id="@+id/noiseScaleLabel" style="@style/SettingLabel" />
+        <SeekBar android:id="@+id/noiseScaleBar" style="@style/SettingSlider" />
+
+        <TextView android:id="@+id/noiseWLabel" style="@style/SettingLabel" />
+        <SeekBar android:id="@+id/noiseWBar" style="@style/SettingSlider" />
+
+        <TextView android:id="@+id/sentenceSilenceLabel" style="@style/SettingLabel" />
+        <SeekBar android:id="@+id/sentenceSilenceBar" style="@style/SettingSlider" />
+
+        <TextView android:id="@+id/volumeLabel" style="@style/SettingLabel" />
+        <SeekBar android:id="@+id/volumeBar" style="@style/SettingSlider" />
+
+        <Button
+            android:id="@+id/resetButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/reset_defaults" />
+
+        <TextView
+            android:id="@+id/modelInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>

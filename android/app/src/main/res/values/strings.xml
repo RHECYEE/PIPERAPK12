@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Piper TTS MVP</string>
+    <string name="settings_title">Settings</string>
+    <string name="text_hint">Type or paste the text to read aloud…</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="resume">Resume</string>
+    <string name="back_10">« 10s</string>
+    <string name="forward_10">10s »</string>
+    <string name="settings">Settings</string>
+    <string name="starting">Starting Piper…</string>
+
+    <string name="voice">Voice / model</string>
+    <string name="import_voice">Import voice (.onnx + .onnx.json)…</string>
+    <string name="speaker">Speaker</string>
+    <string name="length_scale">Speech rate (length_scale)</string>
+    <string name="noise_scale">Noise scale (noise_scale)</string>
+    <string name="noise_w">Noise width (noise_w)</string>
+    <string name="sentence_silence">Sentence silence (seconds)</string>
+    <string name="volume">Playback volume</string>
+    <string name="reset_defaults">Reset to Defaults</string>
+    <string name="length_scale_help">Higher is slower. Passed to Piper as the length scale in the model\'s scales input.</string>
+    <string name="single_speaker">This model has a single speaker.</string>
+</resources>

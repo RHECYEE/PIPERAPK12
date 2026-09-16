@@ -1,0 +1,134 @@
+plugins {
+    id 'com.android.application'
+}
+
+def ortVersion = '1.17.1'
+def ortRoot = layout.buildDirectory.dir('nativedeps/ort')
+def generatedAssets = layout.buildDirectory.dir('generated/piperAssets')
+
+// onnxruntime-android ships headers + per-ABI .so inside its AAR. Pull it through a
+// dedicated configuration so we control both the CMake link path and APK packaging.
+configurations {
+    ortAar
+}
+
+tasks.register('prepareOnnxRuntime', Copy) {
+    description = 'Unpacks onnxruntime-android AAR for the CMake build and APK packaging.'
+    from { zipTree(configurations.ortAar.singleFile) }
+    into ortRoot
+    include 'headers/**'
+    include 'jni/**'
+}
+
+// The fork already carries a working Piper voice in etc/. Reuse it as the bundled
+// voice instead of committing another model binary.
+tasks.register('copyBundledVoice', Copy) {
+    description = 'Copies the repository test voice into assets/voices.'
+    from("${rootDir}/../etc") {
+        include 'test_voice.onnx'
+        include 'test_voice.onnx.json'
+    }
+    into generatedAssets.map { it.dir('voices') }
+}
+
+android {
+    namespace 'dev.piper.mvp'
+    compileSdk 35
+    ndkVersion '26.3.11579264'
+
+    defaultConfig {
+        applicationId 'dev.piper.mvp'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '1.0-mvp'
+
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+        }
+        externalNativeBuild {
+            cmake {
+                arguments "-DORT_ROOT=${ortRoot.get().asFile.absolutePath}",
+                          '-DANDROID_STL=c++_shared'
+                cppFlags '-std=c++17', '-fexceptions', '-frtti'
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs += [ortRoot.map { it.dir('jni') }]
+            assets.srcDirs += [generatedAssets]
+        }
+    }
+
+    // Per-ABI APKs plus a universal one, so there is a small APK per device.
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            universalApk true
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // Java ORT bindings are unused; we drive onnxruntime from C++.
+            excludes += ['**/libonnxruntime4j_jni.so']
+            useLegacyPackaging = true
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            debuggable true
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // espeak-ng-data is ~19 MB of many small files; leaving it uncompressed in the
+    // APK lets us stream it straight out with no inflate cost on first run.
+    androidResources {
+        noCompress += ['onnx']
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    ortAar "com.microsoft.onnxruntime:onnxruntime-android:${ortVersion}@aar"
+    testImplementation 'junit:junit:4.13.2'
+}
+
+tasks.named('preBuild').configure {
+    dependsOn 'prepareOnnxRuntime', 'copyBundledVoice'
+}
+// CMake configure reads ORT_ROOT, so it must not run before the AAR is unpacked.
+tasks.configureEach { task ->
+    if (task.name.startsWith('configureCMake') || task.name.startsWith('buildCMake')
+            || task.name.startsWith('merge') && task.name.contains('JniLibFolders')) {
+        task.dependsOn 'prepareOnnxRuntime'
+    }
+    if (task.name.startsWith('generate') && task.name.contains('Assets')) {
+        task.dependsOn 'copyBundledVoice'
+    }
+}
