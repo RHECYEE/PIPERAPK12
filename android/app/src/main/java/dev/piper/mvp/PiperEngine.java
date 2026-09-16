@@ -7,7 +7,7 @@ import android.util.Log;
 import java.io.File;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Owns the native Piper lifecycle and runs synthesis off the UI thread.
@@ -34,7 +34,10 @@ final class PiperEngine {
     private final ExecutorService executor = Executors.newSingleThreadExecutor(
             r -> new Thread(r, "piper-native"));
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
+    // Every synthesis run gets a token. Bumping it both cancels the run in flight and
+    // makes its remaining chunks and callbacks no-ops, so a superseded run can never
+    // append audio to, or finish, the run that replaced it.
+    private final AtomicInteger currentRun = new AtomicInteger();
 
     private Listener listener;
     private volatile boolean initialized;
@@ -140,8 +143,12 @@ final class PiperEngine {
 
     /** Synthesizes {@code text}, appending each sentence to {@code playback} as it lands. */
     void synthesize(String text, AppSettings settings, PlaybackEngine playback) {
-        cancelRequested.set(false);
+        final int run = currentRun.incrementAndGet();
         executor.execute(() -> {
+            if (currentRun.get() != run) {
+                Log.i(TAG, "synthesis run " + run + " superseded before it started");
+                return;
+            }
             long handle = voiceHandle;
             if (handle == 0L) {
                 postError("No voice loaded", null);
@@ -155,7 +162,7 @@ final class PiperEngine {
                         settings.noiseScale(), settings.lengthScale(), settings.noiseW(),
                         settings.sentenceSilence(), speakerId,
                         pcm -> {
-                            if (cancelRequested.get()) {
+                            if (currentRun.get() != run) {
                                 return false;
                             }
                             playback.appendPcm(pcm);
@@ -169,18 +176,24 @@ final class PiperEngine {
                             });
                             return true;
                         });
-                boolean cancelled = cancelRequested.get();
-                Log.i(TAG, "synthesis end: samples=" + total
+                boolean cancelled = currentRun.get() != run;
+                Log.i(TAG, "synthesis end: run=" + run + " samples=" + total
                         + " wallMs=" + (System.currentTimeMillis() - started)
                         + " cancelled=" + cancelled);
+                if (cancelled) {
+                    return; // a newer run owns the playback engine now
+                }
                 main.post(() -> {
                     Listener l = listener;
                     if (l != null) {
-                        l.onSynthesisFinished(total, cancelled);
+                        l.onSynthesisFinished(total, false);
                     }
                 });
             } catch (Throwable t) {
                 Log.e(TAG, "synthesis failed", t);
+                if (currentRun.get() != run) {
+                    return;
+                }
                 postError("Synthesis failed: " + t.getMessage(), t);
                 main.post(() -> {
                     Listener l = listener;
@@ -193,8 +206,7 @@ final class PiperEngine {
     }
 
     void cancelSynthesis() {
-        Log.i(TAG, "cancel requested");
-        cancelRequested.set(true);
+        Log.i(TAG, "cancel requested (run " + currentRun.incrementAndGet() + ")");
     }
 
     void shutdown() {

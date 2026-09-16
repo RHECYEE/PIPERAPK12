@@ -39,6 +39,7 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
     private PlaybackEngine playback;
 
     private String synthesizedText;
+    private String synthesizedFingerprint;
     private String loadedVoiceId;
     private int numSpeakers = 1;
     private String[] speakerNames = new String[0];
@@ -130,6 +131,7 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
             playback = new PlaybackEngine(sampleRate);
             playback.setListener(state -> ui.post(this::syncButtons));
             synthesizedText = null;
+            synthesizedFingerprint = null;
         }
         playback.setVolume(settings.volume());
         setStatus(voice.displayName() + " · " + sampleRate + " Hz"
@@ -148,8 +150,11 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
             Toast.makeText(this, "Enter some text first", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (text.equals(synthesizedText) && playback.totalFrames() > 0) {
-            // Same text, audio already cached: just play from wherever we are.
+        if (text.equals(synthesizedText)
+                && settings.synthesisFingerprint().equals(synthesizedFingerprint)
+                && playback.totalFrames() > 0) {
+            // Same text and same synthesis settings: the cached audio is still correct,
+            // so play from wherever we are instead of regenerating.
             Log.i(TAG, "play: reusing cached audio, frames=" + playback.totalFrames());
             playback.play();
             startTicker();
@@ -162,6 +167,7 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
         engine.cancelSynthesis();
         playback.reset();
         synthesizedText = text;
+        synthesizedFingerprint = settings.synthesisFingerprint();
         synthesisRunning = true;
         setStatus("Synthesizing…");
         engine.synthesize(text, settings, playback);
@@ -210,9 +216,6 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
             Log.i(TAG, "voice changed in settings: " + loadedVoiceId + " -> " + selected);
             loadSelectedVoice();
         }
-        // Settings may have changed the synthesis parameters, so the cached audio
-        // no longer matches what Piper would produce now.
-        synthesizedText = null;
         startTicker();
     }
 
@@ -283,9 +286,12 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
         if (playback == null) {
             return;
         }
-        boolean playing = playback.state() == PlaybackEngine.State.PLAYING;
-        pauseButton.setText(playing ? R.string.pause : R.string.resume);
-        playButton.setEnabled(true);
+        PlaybackEngine.State state = playback.state();
+        pauseButton.setText(state == PlaybackEngine.State.PAUSED
+                ? R.string.resume : R.string.pause);
+        // Nothing to pause or resume until there is audio.
+        pauseButton.setEnabled(state == PlaybackEngine.State.PLAYING
+                || state == PlaybackEngine.State.PAUSED);
     }
 
     private void setStatus(String text) {

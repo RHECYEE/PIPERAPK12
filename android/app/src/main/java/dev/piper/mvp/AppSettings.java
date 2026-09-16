@@ -137,6 +137,16 @@ final class AppSettings {
                 .apply();
     }
 
+    /**
+     * Identifies everything that changes what Piper would produce. Cached audio stays
+     * valid while this is unchanged. Volume is excluded: it is applied at playback, so
+     * changing it needs no re-synthesis.
+     */
+    String synthesisFingerprint() {
+        return voiceId() + "|" + noiseScale() + "|" + lengthScale() + "|" + noiseW()
+                + "|" + sentenceSilence() + "|" + speakerId();
+    }
+
     String describe() {
         return "noiseScale=" + noiseScale() + " lengthScale=" + lengthScale()
                 + " noiseW=" + noiseW() + " sentenceSilence=" + sentenceSilence()
