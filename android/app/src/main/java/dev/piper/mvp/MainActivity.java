@@ -44,6 +44,7 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
     private int numSpeakers = 1;
     private String[] speakerNames = new String[0];
     private boolean synthesisRunning;
+    private boolean voiceLoading;
 
     private final Runnable ticker = new Runnable() {
         @Override
@@ -76,10 +77,6 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
         findViewById(R.id.backButton).setOnClickListener(v -> onSeek(-SEEK_SECONDS));
         findViewById(R.id.forwardButton).setOnClickListener(v -> onSeek(SEEK_SECONDS));
         findViewById(R.id.settingsButton).setOnClickListener(v -> openSettings());
-
-        textInput.setText("Piper is a fast, local neural text to speech system. "
-                + "This build runs it entirely on the device. "
-                + "Use the ten second buttons to jump around the generated audio.");
 
         bootstrap();
     }
@@ -115,6 +112,8 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
             settings.setVoiceId(voice.id);
         }
         Log.i(TAG, "loading voice " + voice.id);
+        voiceLoading = true;
+        setStatus("Loading " + voice.displayName() + "…");
         if (engine.isReady()) {
             engine.loadVoice(voice);
         } else {
@@ -126,11 +125,14 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
     public void onVoiceLoaded(VoiceRepository.Voice voice, int sampleRate, int speakers,
                               float[] modelDefaults, String[] names) {
         settings.seedFromModelDefaultsIfUnset(modelDefaults);
+        voiceLoading = false;
         loadedVoiceId = voice.id;
         numSpeakers = speakers;
         speakerNames = names;
 
         if (playback == null || playback.sampleRate() != sampleRate) {
+            Log.i(TAG, "playback sample rate " + (playback == null ? 0 : playback.sampleRate())
+                    + " -> " + sampleRate + " Hz for " + voice.id);
             if (playback != null) {
                 playback.release();
             }
@@ -147,6 +149,11 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
     }
 
     private void onPlay() {
+        if (voiceLoading) {
+            Toast.makeText(this, "Still loading the voice — try again in a moment",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (playback == null) {
             Toast.makeText(this, "Piper is still starting", Toast.LENGTH_SHORT).show();
             return;
@@ -265,6 +272,7 @@ public final class MainActivity extends Activity implements PiperEngine.Listener
 
     @Override
     public void onError(String message, Throwable cause) {
+        voiceLoading = false;
         Log.e(TAG, "error: " + message, cause);
         setStatus(message);
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();

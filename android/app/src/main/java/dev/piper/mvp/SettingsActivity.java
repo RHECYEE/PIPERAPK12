@@ -47,7 +47,6 @@ public final class SettingsActivity extends Activity {
     private Spinner voiceSpinner;
     private Spinner speakerSpinner;
     private List<VoiceRepository.Voice> voiceList = new ArrayList<>();
-    private boolean bindingVoices;
 
     private SliderSetting lengthScale;
     private SliderSetting noiseScale;
@@ -93,6 +92,8 @@ public final class SettingsActivity extends Activity {
                 findViewById(R.id.volumeLabel), getString(R.string.volume),
                 0f, 1f, settings.volume(), settings::setVolume);
 
+        findViewById(R.id.downloadVoicesButton).setOnClickListener(v ->
+                startActivity(new Intent(this, VoiceStoreActivity.class)));
         findViewById(R.id.importVoiceButton).setOnClickListener(v -> pickVoiceFiles());
         ((Button) findViewById(R.id.resetButton)).setOnClickListener(v -> resetToDefaults());
 
@@ -101,8 +102,14 @@ public final class SettingsActivity extends Activity {
         showModelInfo();
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // A download or delete in the voice store changes what is available here.
+        bindVoices();
+    }
+
     private void bindVoices() {
-        bindingVoices = true;
         voiceList = voices.list();
         List<String> labels = new ArrayList<>();
         int selected = 0;
@@ -123,10 +130,16 @@ public final class SettingsActivity extends Activity {
         voiceSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (bindingVoices || position >= voiceList.size()) {
+                if (position >= voiceList.size()) {
                     return;
                 }
                 String voiceId = voiceList.get(position).id;
+                // Spinner fires this once for the initial selection too, on a later layout
+                // pass than setSelection(), so a flag set around binding never catches it.
+                // Writing only real changes makes that echo harmless.
+                if (voiceId.equals(settings.voiceId())) {
+                    return;
+                }
                 settings.setVoiceId(voiceId);
                 Log.i(TAG, "voice selected: " + voiceId);
             }
@@ -135,7 +148,6 @@ public final class SettingsActivity extends Activity {
             public void onNothingSelected(AdapterView<?> parent) {
             }
         });
-        bindingVoices = false;
     }
 
     private void bindSpeakers() {
@@ -221,9 +233,29 @@ public final class SettingsActivity extends Activity {
         } else if (data.getData() != null) {
             uris.add(data.getData());
         }
-        int imported = voices.importFrom(uris);
-        Toast.makeText(this, "Imported " + imported + " file(s)", Toast.LENGTH_SHORT).show();
+        VoiceRepository.ImportResult result = voices.importFrom(uris);
+
+        // Selecting the new voice is the whole point of importing one; leaving the old
+        // one active made a successful import look like it had done nothing.
+        if (!result.completed.isEmpty()) {
+            String voiceId = result.completed.get(0);
+            settings.setVoiceId(voiceId);
+            Log.i(TAG, "auto-selecting imported voice: " + voiceId);
+        }
         bindVoices();
+
+        String message;
+        if (!result.completed.isEmpty()) {
+            message = "Imported " + result.completed.get(0)
+                    + (result.completed.size() > 1
+                            ? " and " + (result.completed.size() - 1) + " more" : "");
+        } else if (!result.missingConfig.isEmpty()) {
+            message = "Also pick " + result.missingConfig.get(0)
+                    + ".onnx.json — a voice needs both files";
+        } else {
+            message = "No Piper voice files in that selection";
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
 
     /** Maps a 0..1000 SeekBar onto a float range and writes through on every change. */

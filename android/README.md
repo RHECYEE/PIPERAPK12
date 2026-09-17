@@ -76,6 +76,30 @@ Settings persist in `SharedPreferences`. On first run they are seeded from the l
 model's own `inference` values, so the app starts out behaving exactly like the upstream
 CLI for that voice. **Reset to Defaults** restores the current model's declared values.
 
+## Voices
+
+The app ships with the repository's own `etc/test_voice.onnx` so it works offline out of
+the box. **Settings → Download more voices** lists the 13 English female voices published
+in `rhasspy/piper-voices` at tag `v1.0.0` (~881 MB in total, so they are fetched on demand
+rather than bundled); tap one to download it, tap an installed one to switch to it, long
+press to delete. **Import voice** side-loads any other Piper voice from storage - pick
+both the `.onnx` **and** its `.onnx.json`, since a model without its config is unusable.
+
+That download is the only thing the app uses the network for, and it is why the manifest
+declares `INTERNET`. Synthesis and playback never touch the network once a voice is on
+the device.
+
+`VoiceCatalog.java` is generated from the repository tree and each voice's `.onnx.json`,
+so its sizes, sample rates and URLs are real. piper-voices carries no gender field, so
+the selection itself comes from voice and dataset provenance rather than metadata - edit
+the list in that one file to change it. Multi-speaker models (vctk, libritts, arctic,
+l2arctic, aru, semaine) also contain female speakers and are not listed; import one and
+choose a speaker in Settings instead.
+
+Voices differ in sample rate (low is 16 kHz, medium and high are 22.05 kHz), so switching
+voices rebuilds the AudioTrack. Playback refuses to start while a voice is still loading,
+because feeding 22.05 kHz audio to a 16 kHz track plays slurred and a fifth flat.
+
 ## Known limits
 
 * **Cancellation is sentence-granular.** piper's audio callback only fires at sentence

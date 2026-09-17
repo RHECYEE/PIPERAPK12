@@ -154,7 +154,21 @@ final class PiperEngine {
                 postError("No voice loaded", null);
                 return;
             }
-            Log.i(TAG, "synthesis start: chars=" + text.length() + " " + settings.describe());
+            // Hard safety net for the voice-switch race: loadVoice() runs on this same
+            // executor and can install a new voice handle while a Play tapped moments
+            // earlier is still queued. That older request captured whatever
+            // PlaybackEngine existed then, so its AudioTrack may be configured for the
+            // previous voice's sample rate. Writing 22050 Hz PCM into a 16000 Hz track
+            // plays slurred and a fifth flat, which sounds like a broken voice rather
+            // than a bug. Refuse instead.
+            if (playback.sampleRate() != sampleRate) {
+                Log.e(TAG, "refusing synthesis: voice is " + sampleRate + " Hz but playback"
+                        + " is " + playback.sampleRate() + " Hz (voice switch in flight)");
+                postError("Voice changed while starting playback — press Play again", null);
+                return;
+            }
+            Log.i(TAG, "synthesis start: chars=" + text.length() + " sampleRate=" + sampleRate
+                    + " " + settings.describe());
             long started = System.currentTimeMillis();
             try {
                 int speakerId = numSpeakers > 1 ? settings.speakerId() : 0;

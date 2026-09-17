@@ -13,6 +13,8 @@
 
     <string name="voice">Voice / model</string>
     <string name="import_voice">Import voice (.onnx + .onnx.json)…</string>
+    <string name="voice_store_title">Download voices</string>
+    <string name="download_voices">Download more voices…</string>
     <string name="speaker">Speaker</string>
     <string name="length_scale">Speech rate (length_scale)</string>
     <string name="noise_scale">Noise scale (noise_scale)</string>

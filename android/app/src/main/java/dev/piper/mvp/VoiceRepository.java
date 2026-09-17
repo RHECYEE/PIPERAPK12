@@ -84,13 +84,23 @@ final class VoiceRepository {
         return null;
     }
 
+    /** What an import produced, so the caller can select the new voice and explain gaps. */
+    static final class ImportResult {
+        final List<String> completed = new ArrayList<>();   // voices now usable
+        final List<String> missingConfig = new ArrayList<>(); // .onnx with no .onnx.json
+        final List<String> ignored = new ArrayList<>();     // not Piper voice files
+        int filesCopied;
+    }
+
     /** Copies picked .onnx / .onnx.json documents into the app's voices directory. */
-    int importFrom(List<Uri> uris) {
+    ImportResult importFrom(List<Uri> uris) {
+        ImportResult result = new ImportResult();
         int imported = 0;
         for (Uri uri : uris) {
             String name = displayName(uri);
             if (name == null || (!name.endsWith(".onnx") && !name.endsWith(".onnx.json"))) {
                 Log.w(TAG, "ignoring import (not a Piper voice file): " + name);
+                result.ignored.add(String.valueOf(name));
                 continue;
             }
             File target = new File(voicesDir, name);
@@ -112,7 +122,28 @@ final class VoiceRepository {
                 Log.e(TAG, "import failed for " + name, e);
             }
         }
-        return imported;
+        result.filesCopied = imported;
+
+        // Work out which of the touched voices are now complete. A .onnx without its
+        // .onnx.json is unusable and used to be dropped silently from the voice list,
+        // which looked exactly like "the import did nothing".
+        for (Uri uri : uris) {
+            String name = displayName(uri);
+            if (name == null || !name.endsWith(".onnx")) {
+                continue;
+            }
+            String id = name.substring(0, name.length() - ".onnx".length());
+            if (findById(id) != null) {
+                if (!result.completed.contains(id)) {
+                    result.completed.add(id);
+                }
+            } else if (!result.missingConfig.contains(id)) {
+                result.missingConfig.add(id);
+            }
+        }
+        Log.i(TAG, "import: copied=" + imported + " usable=" + result.completed
+                + " missingConfig=" + result.missingConfig + " ignored=" + result.ignored);
+        return result;
     }
 
     private String displayName(Uri uri) {
