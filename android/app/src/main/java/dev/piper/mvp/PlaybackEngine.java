@@ -279,13 +279,21 @@ final class PlaybackEngine {
 
             long available = buffer.frames() - from;
             if (available <= 0) {
-                // Nothing left to write: either we are done, or synthesis has not caught
-                // up. Stall the track rather than let it underrun mid-sentence.
-                if (producerFinished && positionFrames() >= buffer.frames()) {
+                // Everything generated so far has been handed to AudioTrack, but it may
+                // still be playing it out. Only act once the head has actually drained,
+                // otherwise we cut off the audio still in the track's buffer.
+                boolean drained = positionFrames() >= buffer.frames();
+                if (!drained) {
+                    sleep(IDLE_SLEEP_MS);
+                    continue;
+                }
+                if (producerFinished) {
                     Log.i(TAG, "playback reached end at " + fmt(positionSeconds()) + "s");
                     stallTrack();
                     setState(State.ENDED);
                 } else if (stallTrack()) {
+                    // Genuinely starved mid-stream: pause rather than underrun, and pick
+                    // up again once the next sentence lands.
                     Log.i(TAG, "waiting for audio at " + fmt(positionSeconds())
                             + "s (synthesis is behind playback)");
                 }
