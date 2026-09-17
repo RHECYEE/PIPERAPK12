@@ -24,12 +24,21 @@ final class PlaybackEngine {
     private static final int WRITE_CHUNK_FRAMES = 4096;
     private static final long IDLE_SLEEP_MS = 15L;
 
+    /**
+     * Audio to bank before letting AudioTrack run. Synthesis is slower than real time on
+     * modest hardware, so starting with an empty cache makes the track underrun at every
+     * sentence boundary, which sounds like badly broken speech rather than slow speech.
+     */
+    private static final double PREBUFFER_SECONDS = 1.5;
+
     private final PcmBuffer buffer = new PcmBuffer();
     private final PlaybackTimeline timeline;
     private final int sampleRate;
     private final Object lock = new Object();
 
     private AudioTrack track;
+    /** Whether AudioTrack is currently running; false while stalled waiting for audio. */
+    private boolean trackRunning;
     private Thread writerThread;
     private volatile boolean writerRunning;
     private volatile State state = State.IDLE;
@@ -100,9 +109,11 @@ final class PlaybackEngine {
                 Log.i(TAG, "play from ENDED -> rewinding to 0");
                 track.pause();
                 track.flush();
+                trackRunning = false;
                 timeline.applySeek(0L);
             }
-            track.play();
+            // The writer starts the track once it has banked PREBUFFER_SECONDS, or as
+            // soon as synthesis is complete.
             startWriter();
         }
         setState(State.PLAYING);
@@ -115,6 +126,7 @@ final class PlaybackEngine {
         synchronized (lock) {
             if (track != null && state == State.PLAYING) {
                 track.pause();
+                trackRunning = false;
             }
         }
         if (state == State.PLAYING) {
@@ -143,11 +155,11 @@ final class PlaybackEngine {
             if (track != null) {
                 track.pause();
                 track.flush();
+                trackRunning = false;
             }
             timeline.applySeek(target);
-            if (resumeState == State.PLAYING && track != null) {
-                track.play();
-            }
+            // Restarting is the writer's job again: after a seek the cache already holds
+            // the audio, so it resumes on its next pass.
         }
         if (resumeState == State.ENDED && target < total) {
             setState(State.PAUSED);
@@ -170,6 +182,7 @@ final class PlaybackEngine {
                 track.flush();
                 track.release();
                 track = null;
+                trackRunning = false;
             }
             buffer.clear();
             timeline.reset();
@@ -264,21 +277,36 @@ final class PlaybackEngine {
                 generation = timeline.generation();
             }
 
-            int count = buffer.copyInto(from, scratch, scratch.length);
-            if (count == 0) {
-                // Nothing new yet: either synthesis is still running, or we are done.
+            long available = buffer.frames() - from;
+            if (available <= 0) {
+                // Nothing left to write: either we are done, or synthesis has not caught
+                // up. Stall the track rather than let it underrun mid-sentence.
                 if (producerFinished && positionFrames() >= buffer.frames()) {
                     Log.i(TAG, "playback reached end at " + fmt(positionSeconds()) + "s");
-                    synchronized (lock) {
-                        if (track != null) {
-                            track.pause();
-                        }
-                    }
+                    stallTrack();
                     setState(State.ENDED);
+                } else if (stallTrack()) {
+                    Log.i(TAG, "waiting for audio at " + fmt(positionSeconds())
+                            + "s (synthesis is behind playback)");
                 }
                 sleep(IDLE_SLEEP_MS);
                 continue;
             }
+
+            // Bank enough audio before (re)starting, so playback does not immediately
+            // catch up with synthesis and break apart again.
+            long prebuffer = timeline.framesOf(PREBUFFER_SECONDS);
+            if (!trackRunning() && !producerFinished && available < prebuffer) {
+                sleep(IDLE_SLEEP_MS);
+                continue;
+            }
+
+            int count = buffer.copyInto(from, scratch, scratch.length);
+            if (count == 0) {
+                sleep(IDLE_SLEEP_MS);
+                continue;
+            }
+            startTrackIfNeeded();
 
             AudioTrack current;
             synchronized (lock) {
@@ -298,6 +326,34 @@ final class PlaybackEngine {
                 Log.e(TAG, "AudioTrack.write failed: " + written);
                 sleep(IDLE_SLEEP_MS);
             }
+        }
+    }
+
+    private boolean trackRunning() {
+        synchronized (lock) {
+            return trackRunning;
+        }
+    }
+
+    /** Starts AudioTrack if it is stalled. The playback head survives pause/play. */
+    private void startTrackIfNeeded() {
+        synchronized (lock) {
+            if (track != null && !trackRunning && state == State.PLAYING) {
+                track.play();
+                trackRunning = true;
+            }
+        }
+    }
+
+    /** Pauses without flushing, so the position stays exact. True if it did something. */
+    private boolean stallTrack() {
+        synchronized (lock) {
+            if (track != null && trackRunning) {
+                track.pause();
+                trackRunning = false;
+                return true;
+            }
+            return false;
         }
     }
 
